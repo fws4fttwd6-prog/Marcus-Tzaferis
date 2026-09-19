@@ -5,15 +5,32 @@ import { isDemoMode } from "./claude/client.js";
 import { REGIONS } from "./data/regions.js";
 import { MATURITY_LABEL, vintageAdvice } from "./domain/vintage.js";
 import { discoverWines } from "./discover.js";
+import {
+  acknowledgeAlerts,
+  addWatch,
+  listAlerts,
+  listWatches,
+  removeWatch,
+  restoreSeeds,
+  storePath,
+} from "./store.js";
+import { checkWatch, checkWatchlist, isDue } from "./watchlist.js";
 import { searchWine } from "./search.js";
 
 const HELP = `
-Cellar Scout — wine priced the way it arrives in Toronto.
+Krasi Crazy — wine priced the way it arrives in Toronto.
 
   npm run cli -- search "Guado al Tasso" [options]
   npm run cli -- discover [options]
   npm run cli -- vintages <region-key>
   npm run cli -- regions
+
+  npm run cli -- watch list
+  npm run cli -- watch add "Chateau Figeac" --target 240
+  npm run cli -- watch check [--all] [--id <id>]
+  npm run cli -- watch alerts [--ack]
+  npm run cli -- watch remove <id>
+  npm run cli -- watch restore
 
 Search options
   --quantity <n>     bottles per order (default 6) — freight is shared, so this matters
@@ -33,7 +50,7 @@ Discover options
 
 const cad = (n: number | null | undefined) =>
   n === null || n === undefined || !Number.isFinite(n)
-    ? "     —"
+    ? "—".padStart(9)
     : `$${n.toFixed(2)}`.padStart(9);
 
 function pad(s: string, n: number): string {
@@ -53,6 +70,11 @@ async function main(): Promise<void> {
       count: { type: "string" },
       focus: { type: "string" },
       "include-oos": { type: "boolean" },
+      target: { type: "string" },
+      id: { type: "string" },
+      all: { type: "boolean" },
+      ack: { type: "boolean" },
+      limit: { type: "string" },
       json: { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
@@ -64,7 +86,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (isDemoMode() && command !== "vintages" && command !== "regions") {
+  // Only the commands that actually reach the web care about a missing key.
+  const searches =
+    command === "search" ||
+    command === "discover" ||
+    (command === "watch" && positionals[1] === "check");
+  if (isDemoMode() && searches) {
     console.error("! No ANTHROPIC_API_KEY set — showing bundled sample data.\n");
   }
 
@@ -166,6 +193,113 @@ async function main(): Promise<void> {
         console.log(`\n  Overlooked: ${advice.sleepers.map((s) => s.year).join(", ")}`);
       }
       console.log("");
+      return;
+    }
+
+    case "watch": {
+      const sub = positionals[1] ?? "list";
+
+      if (sub === "list") {
+        const watches = await listWatches();
+        if (values.json) { console.log(JSON.stringify(watches, null, 2)); return; }
+        console.log(`\n  ${watches.length} wines watched — ${storePath()}\n`);
+        console.log(
+          `  ${pad("ID", 14)}${pad("WINE", 30)}${"TARGET".padStart(9)} ${"BEST".padStart(9)}  STATUS`,
+        );
+        for (const w of watches) {
+          const best = w.latest?.bestLandedCad ?? null;
+          const target = w.rule.targetLandedCad;
+          const status = !w.enabled
+            ? "paused"
+            : best !== null && target && best <= target
+              ? "AT TARGET"
+              : isDue(w)
+                ? "due"
+                : w.lastCheckedAt
+                  ? `checked ${w.lastCheckedAt.slice(0, 10)}`
+                  : "never checked";
+          console.log(
+            `  ${pad(w.id, 14)}${pad(w.label, 30)}${cad(target)} ${cad(best)}  ${status}`,
+          );
+        }
+        console.log("");
+        return;
+      }
+
+      if (sub === "add") {
+        const query = positionals.slice(2).join(" ");
+        if (!query) {
+          console.error('Which wine? e.g. npm run cli -- watch add "Chateau Figeac" --target 240');
+          process.exitCode = 1;
+          return;
+        }
+        const watch = await addWatch({
+          query,
+          rule: { targetLandedCad: values.target ? Number(values.target) : null },
+        });
+        console.log(`\n  Watching ${watch.label}  (${watch.id})\n`);
+        return;
+      }
+
+      if (sub === "remove") {
+        const id = positionals[2] ?? values.id;
+        if (!id) { console.error("Which watch? Pass an id from `watch list`."); process.exitCode = 1; return; }
+        console.log(await removeWatch(id) ? `\n  Removed ${id}\n` : `\n  No watch with id ${id}\n`);
+        return;
+      }
+
+      if (sub === "restore") {
+        console.log(`\n  Restored ${await restoreSeeds()} seed wines.\n`);
+        return;
+      }
+
+      if (sub === "alerts") {
+        if (values.ack) {
+          console.log(`\n  Marked ${await acknowledgeAlerts("all")} alerts read.\n`);
+          return;
+        }
+        const alerts = await listAlerts({ unacknowledgedOnly: true });
+        if (values.json) { console.log(JSON.stringify(alerts, null, 2)); return; }
+        if (!alerts.length) { console.log("\n  No unread alerts.\n"); return; }
+        console.log(`\n  ${alerts.length} unread alert${alerts.length === 1 ? "" : "s"}\n`);
+        for (const a of alerts) {
+          console.log(`  ${a.watchLabel}  —  ${a.kind}`);
+          console.log(`    ${wrap(a.message, 72, "    ")}`);
+          if (a.url) console.log(`    ${a.url}`);
+          console.log("");
+        }
+        return;
+      }
+
+      if (sub === "check") {
+        if (isDemoMode()) {
+          console.error("  Checking with no API key would only record sample data. Set ANTHROPIC_API_KEY first.\n");
+          process.exitCode = 1;
+          return;
+        }
+        const ids = values.id ? [values.id] : undefined;
+        const { checked, alerts, skipped } = await checkWatchlist({
+          ids,
+          force: Boolean(values.all) || Boolean(values.id),
+          limit: values.limit ? Number(values.limit) : undefined,
+          onProgress: (done, total, label) => {
+            if (label !== "done") process.stderr.write(`  [${done + 1}/${total}] ${label}…\n`);
+          },
+        });
+        console.log(`\n  Checked ${checked.length}${skipped ? `, skipped ${skipped} not yet due` : ""}.`);
+        const failed = checked.filter((c) => !c.ok);
+        for (const f of failed) console.log(`  ! ${f.label}: ${f.error}`);
+        if (!alerts.length) { console.log("  No alerts.\n"); return; }
+        console.log(`\n  ${alerts.length} alert${alerts.length === 1 ? "" : "s"}:\n`);
+        for (const a of alerts) {
+          console.log(`  ${a.watchLabel}  —  ${a.kind}`);
+          console.log(`    ${wrap(a.message, 72, "    ")}\n`);
+        }
+        return;
+      }
+
+      console.error(`Unknown watch command "${sub}".`);
+      process.exitCode = 1;
       return;
     }
 

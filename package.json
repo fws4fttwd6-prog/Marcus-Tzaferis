@@ -1,9 +1,9 @@
 {
-  "name": "cellar-scout",
+  "name": "krasi-crazy",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Wine value finder: searches the web for vendor listings, computes landed cost to Toronto, and rates deals by vintage quality.",
+  "description": "Krasi Crazy \u2014 find great wine and price it the way it actually arrives in Toronto.",
   "engines": {
     "node": ">=20"
   },
@@ -14,7 +14,9 @@
     "serve": "node dist/server.js",
     "cli": "tsx src/cli.ts",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "watch:check": "tsx src/daemon.ts --once",
+    "watch:daemon": "tsx src/daemon.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

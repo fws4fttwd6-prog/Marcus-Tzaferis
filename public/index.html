@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Cellar Scout</title>
+<title>Krasi Crazy</title>
 <meta name="description" content="Find great wine, priced the way it actually arrives in Toronto." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -17,7 +17,7 @@
     <div class="brand">
       <span class="brand-mark" aria-hidden="true"></span>
       <div>
-        <h1>Cellar Scout</h1>
+        <h1>Krasi Crazy <span class="brand-greek" title="krasí — Greek for wine">κρασί</span></h1>
         <p class="brand-sub">Wine priced the way it actually arrives in <strong>Toronto, Ontario</strong></p>
       </div>
     </div>
@@ -28,6 +28,7 @@
   </div>
   <nav class="tabs wrap" role="tablist">
     <button class="tab is-active" role="tab" data-tab="search" aria-selected="true">Find a wine</button>
+    <button class="tab" role="tab" data-tab="watchlist" aria-selected="false">Watchlist <span id="alert-count" class="tab-count" hidden></span></button>
     <button class="tab" role="tab" data-tab="discover" aria-selected="false">Discover value</button>
     <button class="tab" role="tab" data-tab="vintages" aria-selected="false">Vintage chart</button>
     <button class="tab" role="tab" data-tab="costs" aria-selected="false">Landed cost</button>
@@ -81,6 +82,63 @@
 
     <div id="search-status" class="status" hidden></div>
     <div id="search-results"></div>
+  </section>
+
+
+  <!-- ────────────────────────────── WATCHLIST ───────────────────────────── -->
+  <section id="panel-watchlist" class="panel" role="tabpanel">
+    <div class="intro">
+      <h2>Wines you're waiting on</h2>
+      <p>Set the landed price at which each bottle stops being a decision, and this checks the merchants for you. It alerts when a target is hit, when the best price drops sharply, when a listing grades a strong deal, and when a vintage appears that wasn't offered last time.</p>
+    </div>
+
+    <div id="alerts-area"></div>
+
+    <div class="watch-toolbar">
+      <button id="check-all" class="primary" type="button">Check all due</button>
+      <button id="check-all-force" class="secondary" type="button">Force check every wine</button>
+      <button id="watch-add-toggle" class="secondary" type="button">Add a wine</button>
+      <span id="check-progress" class="meta"></span>
+    </div>
+
+    <form id="watch-add" class="discover-form" hidden>
+      <div class="options-grid">
+        <label class="wide">Wine
+          <input id="wa-query" type="text" placeholder="e.g. Chateau Figeac Saint-Emilion" required />
+          <small>Write it as you'd search for it — producer and appellation help.</small>
+        </label>
+        <label>Short name
+          <input id="wa-label" type="text" placeholder="Figeac" />
+        </label>
+        <label>Target landed price (CAD)
+          <input id="wa-target" type="number" min="0" step="5" placeholder="optional" />
+          <small>Leave blank to alert on grade and price drops only.</small>
+        </label>
+        <label>Specific vintage
+          <input id="wa-vintage" type="number" min="1900" max="2030" placeholder="any" />
+        </label>
+        <label>Bottles per order
+          <input id="wa-quantity" type="number" min="1" max="120" value="6" />
+        </label>
+        <label>When will you drink it?
+          <select id="wa-intent">
+            <option value="either">Some now, some later</option>
+            <option value="drink-now">Soon</option>
+            <option value="cellar">Cellaring</option>
+          </select>
+        </label>
+        <label>Check every (hours)
+          <input id="wa-every" type="number" min="1" max="720" value="24" />
+        </label>
+        <label class="wide">Note to self
+          <input id="wa-notes" type="text" placeholder="optional" />
+        </label>
+      </div>
+      <button class="primary" type="submit">Add to watchlist</button>
+    </form>
+
+    <div id="watch-status" class="status" hidden></div>
+    <div id="watch-list"></div>
   </section>
 
   <!-- ────────────────────────────── DISCOVER ────────────────────────────── -->

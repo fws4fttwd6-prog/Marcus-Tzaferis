@@ -1,4 +1,6 @@
-# Cellar Scout
+# Krasi Crazy
+
+*κρασί — krasí — wine*
 
 Wine priced the way it actually arrives in **Toronto, Ontario**.
 
@@ -32,25 +34,41 @@ will not ship to Canada at all. **Shelf price tells you almost nothing.**
 
 ---
 
-## Running it
+## Getting started
+
+Three commands. You need [Node.js](https://nodejs.org) 20 or newer.
 
 ```bash
 npm install
-cp .env.example .env     # then put your Anthropic API key in it
-npm start                # http://localhost:3000
+npm start
 ```
 
-Without an API key it still runs, on bundled sample data, and says so in the
-header. That is enough to see how it works; it is not enough to buy wine with.
+Then open **http://localhost:3000** in your browser. That's it — it runs
+straight away on bundled sample data, which is enough to click around.
 
-There is a CLI too:
+To search the **live web**, add an Anthropic API key:
+
+```bash
+cp .env.example .env
+```
+
+Open `.env`, put your key after `ANTHROPIC_API_KEY=`, save, and restart with
+`npm start`. Get a key at [console.anthropic.com](https://console.anthropic.com/).
+The badge in the top-right corner tells you which mode you're in.
+
+To stop the app, press `Ctrl-C` in the terminal.
+
+### The terminal version
+
+Everything the web interface does is also available without a browser:
 
 ```bash
 npm run cli -- search "Guado al Tasso" --quantity 6
 npm run cli -- search "Barolo Monprivato" --intent cellar --max 250
 npm run cli -- discover --min 40 --max 90 --focus "Nebbiolo"
 npm run cli -- vintages piedmont
-npm run cli -- regions
+npm run cli -- watch list
+npm run cli -- watch check --all
 ```
 
 ---
@@ -108,6 +126,71 @@ stretched by how good the year was. It splits the years into:
 No wine in mind? It goes hunting on its own through French, Italian and Spanish
 merchants for bottles trading below what their quality deserves, and explains
 the specific mechanism for each one rather than calling everything "great value".
+
+---
+
+## The watchlist
+
+Wines you're waiting on, with the landed price at which each one stops being a
+decision. It ships with 22 bottles already on it:
+
+| | |
+|---|---|
+| **Bolgheri & Super Tuscans** | Guado al Tasso, Sassicaia, Solaia, Ornellaia, Masseto, Tignanello, Le Macchiole Paleo Rosso, Grattamacco, Tua Rita Redigaffi, Ca' Marcanda Magari |
+| **Bordeaux** | Léoville Barton, Grand-Puy-Lacoste, Sociando-Mallet, Pontet-Canet, Lynch-Bages, Montrose, Palmer, Canon, La Conseillante |
+| **Spain** | Vega Sicilia Único, Vega Sicilia Valbuena 5º, Alión |
+
+Each carries a target landed price set about 12–18% under what it normally
+costs here — deep enough to be worth acting on, shallow enough to fire more
+than once a decade. Every target has a note in `src/data/seed-watchlist.ts`
+explaining where the number came from, and all of them are editable inline.
+
+**Four things trigger an alert:**
+
+- **Target hit** — the best landed price reaches your number
+- **Price drop** — the best price falls 10% or more since the last check
+- **Strong deal** — a listing grades A or better, whatever the absolute price
+- **New vintage** — a year appears that wasn't offered last time
+
+Rules are per wine. A wine with no target still alerts on grade and drops.
+
+**Checking costs money.** Each check is a live web search, so nothing runs
+speculatively. Each wine has its own interval (24 hours by default) and only
+what's actually due gets checked. The web interface asks before starting a run
+and tells you how many searches it's about to make.
+
+```bash
+npm run cli -- watch list          # what you're watching, closest to target first
+npm run cli -- watch check         # everything due
+npm run cli -- watch alerts        # unread alerts
+npm run cli -- watch add "Chateau Figeac" --target 240
+npm run watch:daemon               # leave it running; checks what's due every 30 min
+npm run watch:check                # one pass, for cron
+```
+
+Set `KRASI_WEBHOOK_URL` and alerts are POSTed there as they fire — Slack and
+Discord webhooks both work as-is.
+
+The watchlist lives in `data/watchlist.json`, which is plain readable JSON and
+is not committed to git. It keeps every check as price history, which is what
+draws the sparkline on each card.
+
+---
+
+## Exchange rates
+
+The rate is load-bearing: at EUR/CAD 1.61 rather than 1.52, a €80 bottle costs
+seven dollars more before a cent of freight is added.
+
+Rates are fetched live, in order of preference, from the **Bank of Canada**
+Valet API (the authoritative source for CAD, published each business day by
+16:30 ET), then the **ECB** via Frankfurter, then the Exchange Rate API. All
+three are free and need no key. If every one of them is unreachable, a pinned
+table dated 2026-09-19 is used and **every result built on it is flagged
+stale** in the interface rather than quietly passed off as current.
+
+`GET /api/rates` shows which source is in use and which currencies came back
+live. To override one by hand, set e.g. `KRASI_FX_EUR_CAD=1.6063`.
 
 ---
 
@@ -179,6 +262,7 @@ Everything judgemental lives in three files, and they are meant to be edited.
 | `src/data/vintage-chart.ts` | Vintage scores by region and year. Change a number and every rating moves with it. |
 | `src/data/regions.ts` | How each appellation ages, and its typical price band. |
 | `src/domain/landed-cost.ts` | The whole rate card — excise, duty, LCBO markup, HST, freight by zone. Each rate carries a provenance note. |
+| `src/data/seed-watchlist.ts` | The starting watchlist and its target prices, each with a note on where the number came from. |
 
 Run `npm test` after editing. The tests check that every charted region exists,
 that scores are in range, that there are no gaps in a region's run of years, and
@@ -200,6 +284,12 @@ The server is also a plain JSON API.
 | `GET /api/regions` | Region list with price bands |
 | `GET /api/rates` | The live rate card, FX table and provenance notes |
 | `GET /api/health` | Whether it is running live or on sample data |
+| `GET /api/watchlist` | Watches, alerts and what's due |
+| `POST /api/watchlist` | Add a wine to watch |
+| `PATCH /api/watchlist/:id` | Change a target, interval or rule |
+| `POST /api/watchlist/:id/check` | Check one wine now (synchronous) |
+| `POST /api/watchlist/check` | Check everything due (background job, poll for progress) |
+| `POST /api/alerts/ack` | Mark alerts read |
 
 Searches are cached for 30 minutes and discoveries for an hour, so repeating a
 query does not repeat the bill. Pass `refresh: true` to force a fresh search.
@@ -223,17 +313,21 @@ prices; it does not decide what they mean.
 
 ```
 src/
-  data/        vintage chart, region profiles, demo fixtures
+  data/        vintage chart, region profiles, seed watchlist, demo fixtures
   domain/      fx · landed-cost · vintage · value · types
   claude/      client · prompts · schemas · two-pass research
   search.ts    orchestrates a named-wine search
   discover.ts  orchestrates an open-ended hunt
+  watchlist.ts alert rules and the checker
+  store.ts     watchlist persistence
+  jobs.ts      background job registry for long check runs
   server.ts    HTTP API and static hosting
   cli.ts       terminal interface
+  daemon.ts    scheduled checking
 public/        the web interface
-test/          67 tests over the data and the maths
+data/          your watchlist and price history (not committed)
+test/          90 tests over the data, the maths and the alert rules
 ```
 
-Configuration lives in `.env` — see `.env.example`. `CELLAR_SCOUT_MODEL` picks
-the model, `CELLAR_SCOUT_DEMO=1` forces sample data, and
-`CELLAR_SCOUT_FX_EUR_CAD` and friends pin an exchange rate by hand.
+Configuration lives in `.env` — see `.env.example` for every option with a
+note on what it does.

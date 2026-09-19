@@ -293,3 +293,70 @@ table.rate-table { width: 100%; border-collapse: collapse; font-size: .86rem; ma
 table.rate-table th, table.rate-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.rate-table th { font-weight: 600; color: var(--ink-2); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
 table.rate-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ── Watchlist ──────────────────────────────────────────────────────────── */
+.brand-greek {
+  font-size: .7em; color: var(--ink-3); font-weight: 400; margin-left: 4px;
+  letter-spacing: .02em; cursor: help;
+}
+.tab-count {
+  display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 5px;
+  border-radius: 999px; background: var(--wine); color: #fff;
+  font-size: .7rem; font-weight: 700; line-height: 18px; text-align: center;
+  font-family: var(--sans); vertical-align: 1px;
+}
+.secondary {
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm); padding: 10px 16px; font-weight: 500; cursor: pointer;
+}
+.secondary:hover { background: var(--surface-2); }
+.secondary:disabled { opacity: .55; cursor: progress; }
+
+.watch-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 18px; }
+.watch-toolbar .meta { font-size: .84rem; color: var(--ink-2); }
+
+.alerts { border-left: 3px solid var(--gold); margin-bottom: 20px; }
+.alert-list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 10px; }
+.alert {
+  display: flex; gap: 12px; justify-content: space-between; align-items: start;
+  padding: 11px 13px; border-radius: var(--radius-sm);
+  background: var(--surface-2); border: 1px solid var(--line);
+}
+.alert-target-hit { border-color: color-mix(in srgb, var(--green) 45%, transparent); background: color-mix(in srgb, var(--green) 9%, var(--surface)); }
+.alert-price-drop { border-color: color-mix(in srgb, var(--gold) 45%, transparent); background: color-mix(in srgb, var(--gold) 9%, var(--surface)); }
+.alert-kind {
+  display: inline-block; font-size: .68rem; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--wine); margin-right: 8px;
+}
+.alert-wine { font-family: var(--serif); font-size: 1rem; }
+.alert-msg { margin: 5px 0 0; font-size: .89rem; color: var(--ink-2); }
+.alert-meta { margin: 5px 0 0; font-size: .76rem; color: var(--ink-3); }
+
+.watch.is-off { opacity: .6; }
+.watch-head { display: flex; gap: 16px; justify-content: space-between; align-items: start; flex-wrap: wrap; }
+.watch-id { min-width: 0; flex: 1 1 260px; }
+.watch-price { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.watch-price .price-landed { font-size: 1.35rem; }
+.pill {
+  font-family: var(--serif); font-weight: 700; font-size: .8rem;
+  padding: 2px 9px; border-radius: 999px; margin-bottom: 2px;
+}
+.dist { font-size: .78rem; color: var(--ink-3); }
+.dist.hit { color: var(--green); font-weight: 600; }
+.spark { width: 120px; height: 30px; margin-top: 4px; }
+.chip-due { background: color-mix(in srgb, var(--gold) 18%, transparent); color: var(--gold); border-color: color-mix(in srgb, var(--gold) 40%, transparent); }
+
+.watch-line { margin: 10px 0 0; font-size: .86rem; color: var(--ink-2); }
+.watch-note { margin: 8px 0 0; font-size: .84rem; color: var(--ink-3); font-style: italic; }
+.watch-foot {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  margin-top: 14px; padding-top: 11px; border-top: 1px solid var(--line); font-size: .82rem;
+}
+.watch-foot .spacer { flex: 1 1 auto; }
+.inline-field { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-2); }
+.inline-field input { width: 76px; padding: 5px 7px; font-size: .84rem; }
+.link-btn.danger { color: var(--red); }
+@media (max-width: 560px) {
+  .watch-price { text-align: left; align-items: flex-start; }
+  .watch-foot .spacer { display: none; }
+}

@@ -1,4 +1,4 @@
-/* Cellar Scout — front end. No framework; the shapes coming back from the API
+/* Krasi Crazy — front end. No framework; the shapes coming back from the API
    are simple enough that plain DOM building stays the clearest thing to read. */
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -34,11 +34,13 @@ const el = (tag, props = {}, ...children) => {
   return node;
 };
 
-async function api(path, body) {
+async function api(path, body, method) {
+  const verb = method ?? (body ? "POST" : "GET");
+  const sendsBody = body !== null && body !== undefined && verb !== "GET";
   const res = await fetch(path, {
-    method: body ? "POST" : "GET",
-    headers: body ? { "content-type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
+    method: verb,
+    headers: sendsBody ? { "content-type": "application/json" } : undefined,
+    body: sendsBody ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({ error: "The server sent something unreadable." }));
   if (!res.ok) throw new Error(data.detail ? `${data.error} (${data.detail})` : data.error || res.statusText);
@@ -49,7 +51,7 @@ async function api(path, body) {
 
 function initTheme() {
   try {
-    const saved = localStorage.getItem("cellar-scout-theme");
+    const saved = localStorage.getItem("krasi-crazy-theme");
     if (saved) document.documentElement.dataset.theme = saved;
   } catch { /* private mode; the media query default is fine */ }
 
@@ -58,7 +60,7 @@ function initTheme() {
     const dark = now ? now === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
     const next = dark ? "light" : "dark";
     document.documentElement.dataset.theme = next;
-    try { localStorage.setItem("cellar-scout-theme", next); } catch { /* ignore */ }
+    try { localStorage.setItem("krasi-crazy-theme", next); } catch { /* ignore */ }
   });
 }
 
@@ -70,6 +72,7 @@ function initTabs() {
         t.setAttribute("aria-selected", String(t === tab));
       });
       $$(".panel").forEach((p) => p.classList.toggle("is-active", p.id === `panel-${tab.dataset.tab}`));
+      if (tab.dataset.tab === "watchlist") loadWatchlist();
       if (tab.dataset.tab === "vintages") loadVintages();
       if (tab.dataset.tab === "costs") loadRateCard();
     });
@@ -300,6 +303,32 @@ function renderSearch(data) {
           ? el("span", { class: "chip" }, `Benchmark landed ${cad(data.priceReference.benchmarkCad)}`)
           : null,
       ),
+      // A target 15% under the benchmark is about what a genuinely good offer
+      // looks like; it is editable on the watchlist afterwards.
+      el(
+        "div",
+        { style: "margin-top:14px" },
+        el(
+          "button",
+          {
+            class: "secondary",
+            type: "button",
+            onClick: (e) =>
+              watchThisWine(
+                id,
+                data.priceReference.benchmarkCad
+                  ? Math.round((data.priceReference.benchmarkCad * 0.85) / 5) * 5
+                  : null,
+                e.currentTarget,
+              ),
+          },
+          watchState.watches.some(
+            (w) => w.query.toLowerCase() === (id.fullName || id.query).toLowerCase(),
+          )
+            ? "On your watchlist ✓"
+            : "Watch this wine",
+        ),
+      ),
     ),
   );
 
@@ -458,6 +487,365 @@ function initDiscover() {
   });
 }
 
+
+/* ── Watchlist ──────────────────────────────────────────────────────────── */
+
+const ALERT_LABEL = {
+  "target-hit": "Target price hit",
+  "price-drop": "Price drop",
+  "great-deal": "Strong deal",
+  "new-vintage": "New vintage",
+  "back-in-stock": "Back in stock",
+};
+
+let watchState = { watches: [], alerts: [], unacknowledged: 0, dueCount: 0 };
+let pollTimer = null;
+
+/** A tiny inline chart of what this wine has cost over time. */
+function sparkline(history) {
+  const points = history.map((h) => h.bestLandedCad).filter((n) => typeof n === "number");
+  if (points.length < 2) return null;
+
+  const w = 120, h = 30, pad = 2;
+  const min = Math.min(...points), max = Math.max(...points);
+  const span = max - min || 1;
+  const step = (w - pad * 2) / (points.length - 1);
+  const coords = points.map((v, i) => [
+    pad + i * step,
+    pad + (h - pad * 2) * (1 - (v - min) / span),
+  ]);
+  const d = coords.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const last = coords[coords.length - 1];
+  const falling = points[points.length - 1] < points[0];
+
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.setAttribute("class", "spark");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label",
+    `Best landed price over ${points.length} checks, from ${cad(points[0])} to ${cad(points[points.length - 1])}`);
+
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", d);
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", falling ? "var(--green)" : "var(--ink-3)");
+  path.setAttribute("stroke-width", "1.5");
+  path.setAttribute("stroke-linejoin", "round");
+  path.setAttribute("stroke-linecap", "round");
+  svg.append(path);
+
+  const dot = document.createElementNS(ns, "circle");
+  dot.setAttribute("cx", last[0]); dot.setAttribute("cy", last[1]); dot.setAttribute("r", "2.5");
+  dot.setAttribute("fill", falling ? "var(--green)" : "var(--ink-3)");
+  svg.append(dot);
+  return svg;
+}
+
+function renderAlerts() {
+  const area = $("#alerts-area");
+  const live = watchState.alerts.filter((a) => !a.acknowledged);
+  const badge = $("#alert-count");
+  badge.hidden = live.length === 0;
+  badge.textContent = String(live.length);
+
+  if (!live.length) { area.replaceChildren(); return; }
+
+  area.replaceChildren(
+    el(
+      "section",
+      { class: "card alerts" },
+      el(
+        "div",
+        { class: "section-head", style: "margin-top:0" },
+        el("h3", {}, `${live.length} alert${live.length === 1 ? "" : "s"}`),
+        el("button", { class: "link-btn", onClick: () => ackAlerts("all") }, "Mark all read"),
+      ),
+      el(
+        "ul",
+        { class: "alert-list" },
+        live.map((a) =>
+          el(
+            "li",
+            { class: `alert alert-${a.kind}` },
+            el(
+              "div",
+              {},
+              el("span", { class: "alert-kind" }, ALERT_LABEL[a.kind] ?? a.kind),
+              el("strong", { class: "alert-wine" }, a.watchLabel),
+              el("p", { class: "alert-msg" }, a.message),
+              el(
+                "p",
+                { class: "alert-meta" },
+                new Date(a.createdAt).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" }),
+                a.url ? " · " : "",
+                a.url ? el("a", { href: a.url, target: "_blank", rel: "noopener noreferrer" }, "open listing") : null,
+              ),
+            ),
+            el("button", { class: "link-btn", onClick: () => ackAlerts([a.id]) }, "Dismiss"),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+async function ackAlerts(ids) {
+  await api("/api/alerts/ack", { ids });
+  await loadWatchlist();
+}
+
+function renderWatch(w) {
+  const latest = w.latest;
+  const target = w.rule.targetLandedCad;
+  const best = latest?.bestLandedCad ?? null;
+
+  let distance = null;
+  if (best !== null && target) {
+    const pct = ((best - target) / target) * 100;
+    distance =
+      pct <= 0
+        ? el("span", { class: "dist hit" }, `${Math.abs(pct).toFixed(0)}% under target`)
+        : el("span", { class: "dist" }, `${pct.toFixed(0)}% over target`);
+  }
+
+  const due = w.enabled && (!w.lastCheckedAt ||
+    (Date.now() - Date.parse(w.lastCheckedAt)) / 3600000 >= w.checkEveryHours);
+
+  return el(
+    "article",
+    { class: `card watch${w.enabled ? "" : " is-off"}` },
+    el(
+      "div",
+      { class: "watch-head" },
+      el(
+        "div",
+        { class: "watch-id" },
+        el("h4", {}, w.label),
+        el("p", { class: "vendor" },
+          [w.appellation, w.country].filter(Boolean).join(" · ") || w.query),
+        el(
+          "div",
+          { class: "chips" },
+          w.tags.map((t) => el("span", { class: "chip" }, t)),
+          w.vintage ? el("span", { class: "chip" }, `${w.vintage} only`) : null,
+          !w.enabled ? el("span", { class: "chip" }, "paused") : null,
+          due ? el("span", { class: "chip chip-due" }, "due") : null,
+        ),
+      ),
+      el(
+        "div",
+        { class: "watch-price" },
+        latest?.bestGrade ? el("span", { class: `pill grade-${latest.bestGrade}` }, latest.bestGrade) : null,
+        el("span", { class: "price-label" }, "Best landed"),
+        el("span", { class: "price-landed" }, cad(best)),
+        distance,
+        sparkline(w.history ?? []),
+      ),
+    ),
+    latest?.bestVendor
+      ? el("p", { class: "watch-line" },
+          `${latest.bestVintage ?? "NV"} at ${latest.bestVendor}`,
+          latest.bestVendorCountry ? ` (${latest.bestVendorCountry})` : "",
+          ` · ${latest.listingCount} listing${latest.listingCount === 1 ? "" : "s"}`,
+          latest.bestUrl ? " · " : "",
+          latest.bestUrl
+            ? el("a", { href: latest.bestUrl, target: "_blank", rel: "noopener noreferrer" }, "open")
+            : null)
+      : el("p", { class: "watch-line muted" },
+          w.lastCheckedAt ? "Nothing found at the last check." : "Not checked yet."),
+    w.notes ? el("p", { class: "watch-note" }, w.notes) : null,
+    w.lastError ? el("p", { class: "watch-line", style: "color:var(--red)" }, `Last check failed: ${w.lastError}`) : null,
+    el(
+      "div",
+      { class: "watch-foot" },
+      el("label", { class: "inline-field" }, "Target $",
+        el("input", {
+          type: "number", min: "0", step: "5", value: target ?? "",
+          placeholder: "none",
+          onChange: (e) => patchWatch(w.id, { targetLandedCad: e.target.value === "" ? null : Number(e.target.value) }),
+        })),
+      el("label", { class: "inline-field" }, "Every",
+        el("input", {
+          type: "number", min: "1", max: "720", value: w.checkEveryHours,
+          onChange: (e) => patchWatch(w.id, { checkEveryHours: Number(e.target.value) }),
+        }), "h"),
+      el("span", { class: "meta" },
+        w.lastCheckedAt
+          ? `checked ${new Date(w.lastCheckedAt).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}`
+          : "never checked"),
+      el("span", { class: "spacer" }),
+      el("button", { class: "link-btn", onClick: () => checkOne(w.id, w.label) }, "Check now"),
+      el("button", { class: "link-btn", onClick: () => patchWatch(w.id, { enabled: !w.enabled }) },
+        w.enabled ? "Pause" : "Resume"),
+      el("button", { class: "link-btn danger", onClick: () => removeWatch(w.id, w.label) }, "Remove"),
+    ),
+  );
+}
+
+function renderWatchlist() {
+  renderAlerts();
+  const list = $("#watch-list");
+  if (!watchState.watches.length) {
+    list.replaceChildren(
+      el("div", { class: "card empty" },
+        "Your watchlist is empty. ",
+        el("button", { class: "link-btn", onClick: restoreSeeds }, "Load the starter list")),
+    );
+    return;
+  }
+
+  // Closest to its target first — that is the order you'd read it in.
+  const sorted = [...watchState.watches].sort((a, b) => {
+    const rank = (w) => {
+      const best = w.latest?.bestLandedCad;
+      const target = w.rule.targetLandedCad;
+      if (best == null) return Number.POSITIVE_INFINITY;
+      if (!target) return (best / 1000) + 500;
+      return (best - target) / target;
+    };
+    return rank(a) - rank(b);
+  });
+
+  list.replaceChildren(
+    el("div", { class: "section-head" },
+      el("h3", {}, `${watchState.watches.length} wines watched`),
+      el("span", { class: "meta" },
+        `${watchState.dueCount} due for a check · sorted by how close each is to its target`)),
+    ...sorted.map(renderWatch),
+  );
+}
+
+async function loadWatchlist() {
+  watchState = await api("/api/watchlist");
+  renderWatchlist();
+  if (watchState.running) pollJob(watchState.running.id);
+}
+
+async function patchWatch(id, patch) {
+  await api(`/api/watchlist/${id}`, patch, "PATCH");
+  await loadWatchlist();
+}
+
+async function removeWatch(id, label) {
+  if (!confirm(`Stop watching ${label}?`)) return;
+  await api(`/api/watchlist/${id}`, null, "DELETE");
+  await loadWatchlist();
+}
+
+async function restoreSeeds() {
+  await api("/api/watchlist/restore-seeds", {});
+  await loadWatchlist();
+}
+
+async function checkOne(id, label) {
+  const status = $("#watch-status");
+  setStatus(status, "working", `Checking ${label} — one live search, about a minute.`);
+  try {
+    const outcome = await api(`/api/watchlist/${id}/check`, {});
+    setStatus(status, null);
+    await loadWatchlist();
+    if (!outcome.ok) setStatus(status, "error", `${label}: ${outcome.error}`);
+  } catch (err) {
+    setStatus(status, "error", err.message);
+  }
+}
+
+async function startCheckAll(force) {
+  const status = $("#watch-status");
+  const due = force ? watchState.watches.filter((w) => w.enabled).length : watchState.dueCount;
+  if (!due) { setStatus(status, "error", "Nothing is due. Use “Force check” to run them anyway."); return; }
+  if (!confirm(`This runs ${due} live web searches, which takes a while and costs API credits. Go ahead?`)) return;
+
+  try {
+    const { job } = await api("/api/watchlist/check", { force });
+    pollJob(job.id);
+  } catch (err) {
+    setStatus(status, "error", err.message);
+  }
+}
+
+function pollJob(jobId) {
+  clearInterval(pollTimer);
+  const progress = $("#check-progress");
+  const status = $("#watch-status");
+
+  const tick = async () => {
+    try {
+      const { job } = await api(`/api/watchlist/check/${jobId}`);
+      if (job.status === "running") {
+        progress.textContent = `Checking ${job.done + 1} of ${job.total}${job.current ? ` — ${job.current}` : ""}…`;
+        setStatus(status, "working", "Running through the watchlist. You can leave this tab open.");
+        return;
+      }
+      clearInterval(pollTimer);
+      progress.textContent = "";
+      setStatus(status, null);
+      if (job.status === "error") setStatus(status, "error", job.error);
+      await loadWatchlist();
+    } catch {
+      clearInterval(pollTimer);
+      progress.textContent = "";
+    }
+  };
+  tick();
+  pollTimer = setInterval(tick, 3000);
+}
+
+function initWatchlist() {
+  $("#check-all").addEventListener("click", () => startCheckAll(false));
+  $("#check-all-force").addEventListener("click", () => startCheckAll(true));
+
+  const form = $("#watch-add");
+  $("#watch-add-toggle").addEventListener("click", () => {
+    form.hidden = !form.hidden;
+    if (!form.hidden) $("#wa-query").focus();
+  });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await api("/api/watchlist", {
+        query: $("#wa-query").value.trim(),
+        label: $("#wa-label").value.trim() || undefined,
+        targetLandedCad: Number($("#wa-target").value) || null,
+        vintage: Number($("#wa-vintage").value) || null,
+        quantity: Number($("#wa-quantity").value) || 6,
+        intent: $("#wa-intent").value,
+        checkEveryHours: Number($("#wa-every").value) || 24,
+        notes: $("#wa-notes").value.trim() || null,
+      });
+      form.reset();
+      form.hidden = true;
+      await loadWatchlist();
+    } catch (err) {
+      setStatus($("#watch-status"), "error", err.message);
+    }
+  });
+}
+
+/** Offered on every search result, so a wine can be watched without retyping it. */
+async function watchThisWine(identity, suggestedTarget, button) {
+  button.disabled = true;
+  button.textContent = "Adding…";
+  try {
+    await api("/api/watchlist", {
+      query: identity.fullName || identity.query,
+      label: identity.wineName || identity.fullName,
+      producer: identity.producer,
+      country: identity.country,
+      appellation: identity.appellation,
+      targetLandedCad: suggestedTarget,
+    });
+    button.textContent = "On your watchlist ✓";
+    await loadWatchlist();
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = "Watch this wine";
+    setStatus($("#search-status"), "error", err.message);
+  }
+}
+
 /* ── Vintage chart ──────────────────────────────────────────────────────── */
 
 let regionsLoaded = false;
@@ -611,8 +999,13 @@ async function boot() {
   initTheme();
   initTabs();
   initSearch();
+  initWatchlist();
   initDiscover();
   initCosts();
+
+  // Pull the watchlist once at boot so the alert badge is correct before the
+  // tab is ever opened.
+  loadWatchlist().catch(() => {});
 
   try {
     const health = await api("/api/health");

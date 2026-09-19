@@ -5,3 +5,6 @@ dist/
 *.log
 .cache/
 coverage/
+
+# Runtime watchlist and price history
+data/

@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 export const DEFAULT_MODEL = "claude-opus-5";
 
 export function modelId(): string {
-  return process.env.CELLAR_SCOUT_MODEL?.trim() || DEFAULT_MODEL;
+  return process.env.KRASI_MODEL?.trim() || DEFAULT_MODEL;
 }
 
 /**
@@ -11,7 +11,7 @@ export function modelId(): string {
  * back to bundled sample data and says so loudly — but nothing is live.
  */
 export function isDemoMode(): boolean {
-  if (process.env.CELLAR_SCOUT_DEMO === "1") return true;
+  if (process.env.KRASI_DEMO === "1") return true;
   return !(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 }
 

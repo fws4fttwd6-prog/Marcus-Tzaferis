@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { __resetFxCache, convertToCad, currencyForCountry, getFxTable } from "../src/domain/fx.js";
 
 beforeAll(() => {
-  process.env.CELLAR_SCOUT_DEMO = "1";
+  process.env.KRASI_DEMO = "1";
 });
 
 describe("fx", () => {

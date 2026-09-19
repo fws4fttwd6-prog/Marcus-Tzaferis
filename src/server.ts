@@ -20,6 +20,20 @@ import { isDemoMode, modelId, ResearchError } from "./claude/client.js";
 import { searchWine } from "./search.js";
 import { DEFAULT_DISCOVER_OPTIONS, discoverWines, type DiscoverOptions } from "./discover.js";
 import { TtlCache } from "./cache.js";
+import { cancelJob, findRunning, getJob, startJob } from "./jobs.js";
+import {
+  acknowledgeAlerts,
+  addWatch,
+  getWatch,
+  listAlerts,
+  listWatches,
+  removeWatch,
+  restoreSeeds,
+  storePath,
+  updateWatch,
+} from "./store.js";
+import { checkWatch, checkWatchlist, isDue } from "./watchlist.js";
+import { DEFAULT_RULE, GRADE_ORDER, type Grade } from "./domain/watchlist-types.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(here, "..", "public");
@@ -68,7 +82,15 @@ app.get("/api/rates", async (_req, res) => {
   const fx = await getFxTable();
   res.json({
     destination: DESTINATION,
-    fx: { asOf: fx.asOf, source: fx.source, stale: fx.stale, cadPerUnit: fx.cadPerUnit },
+    fx: {
+      asOf: fx.asOf,
+      source: fx.source,
+      sourceLabel: fx.sourceLabel,
+      stale: fx.stale,
+      liveCurrencies: fx.liveCurrencies,
+      overrides: fx.overrides,
+      cadPerUnit: fx.cadPerUnit,
+    },
     rateCard: {
       exciseCadPerLitre: RATES.exciseCadPerLitre,
       mfnCustomsCadPerLitre: RATES.mfnCustomsCadPerLitre,
@@ -206,6 +228,157 @@ app.post("/api/discover", async (req, res, next) => {
   }
 });
 
+
+/* ── Watchlist ───────────────────────────────────────────────────────────── */
+
+app.get("/api/watchlist", async (_req, res, next) => {
+  try {
+    const [watches, alerts] = await Promise.all([listWatches(), listAlerts()]);
+    res.json({
+      watches,
+      alerts,
+      unacknowledged: alerts.filter((a) => !a.acknowledged).length,
+      dueCount: watches.filter((w) => isDue(w)).length,
+      storePath: storePath(),
+      running: findRunning("watchlist-check") ?? null,
+      defaultRule: DEFAULT_RULE,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/watchlist", async (req, res, next) => {
+  try {
+    const query = String(req.body?.query ?? "").trim();
+    if (!query) {
+      res.status(400).json({ error: "Which wine should I watch?" });
+      return;
+    }
+    const watch = await addWatch({
+      query,
+      label: req.body?.label ? String(req.body.label) : undefined,
+      producer: req.body?.producer ?? null,
+      country: req.body?.country ?? null,
+      appellation: req.body?.appellation ?? null,
+      vintage: yearOrNull(req.body?.vintage),
+      quantity: clampInt(req.body?.quantity, 1, 120, 6),
+      intent: ["drink-now", "cellar", "either"].includes(req.body?.intent) ? req.body.intent : "either",
+      checkEveryHours: clampInt(req.body?.checkEveryHours, 1, 720, 24),
+      notes: req.body?.notes ? String(req.body.notes).slice(0, 400) : null,
+      tags: Array.isArray(req.body?.tags) ? req.body.tags.map(String).slice(0, 8) : [],
+      rule: {
+        targetLandedCad: positiveOrNull(req.body?.targetLandedCad),
+        minGrade: isGrade(req.body?.minGrade) ? req.body.minGrade : DEFAULT_RULE.minGrade,
+        dropPct: positiveOrNull(req.body?.dropPct) ?? DEFAULT_RULE.dropPct,
+        onNewVintage: req.body?.onNewVintage === undefined ? true : Boolean(req.body.onNewVintage),
+      },
+    });
+    res.status(201).json(watch);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.patch("/api/watchlist/:id", async (req, res, next) => {
+  try {
+    const patch: Record<string, unknown> = {};
+    if (req.body?.label !== undefined) patch.label = String(req.body.label).slice(0, 80);
+    if (req.body?.notes !== undefined) patch.notes = req.body.notes ? String(req.body.notes).slice(0, 400) : null;
+    if (req.body?.enabled !== undefined) patch.enabled = Boolean(req.body.enabled);
+    if (req.body?.quantity !== undefined) patch.quantity = clampInt(req.body.quantity, 1, 120, 6);
+    if (req.body?.vintage !== undefined) patch.vintage = yearOrNull(req.body.vintage);
+    if (req.body?.checkEveryHours !== undefined) {
+      patch.checkEveryHours = clampInt(req.body.checkEveryHours, 1, 720, 24);
+    }
+    if (["drink-now", "cellar", "either"].includes(req.body?.intent)) patch.intent = req.body.intent;
+
+    const rule: Record<string, unknown> = {};
+    if (req.body?.targetLandedCad !== undefined) rule.targetLandedCad = positiveOrNull(req.body.targetLandedCad);
+    if (req.body?.dropPct !== undefined) rule.dropPct = positiveOrNull(req.body.dropPct);
+    if (req.body?.minGrade !== undefined) rule.minGrade = isGrade(req.body.minGrade) ? req.body.minGrade : null;
+    if (req.body?.onNewVintage !== undefined) rule.onNewVintage = Boolean(req.body.onNewVintage);
+    if (Object.keys(rule).length) patch.rule = rule;
+
+    const watch = await updateWatch(String(req.params.id), patch as never);
+    if (!watch) {
+      res.status(404).json({ error: "No such watch." });
+      return;
+    }
+    res.json(watch);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.delete("/api/watchlist/:id", async (req, res, next) => {
+  try {
+    const ok = await removeWatch(String(req.params.id));
+    res.status(ok ? 200 : 404).json({ ok });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/watchlist/restore-seeds", async (_req, res, next) => {
+  try {
+    res.json({ restored: await restoreSeeds() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** One wine, checked synchronously — a single search finishes inside a request. */
+app.post("/api/watchlist/:id/check", async (req, res, next) => {
+  try {
+    const watch = await getWatch(String(req.params.id));
+    if (!watch) {
+      res.status(404).json({ error: "No such watch." });
+      return;
+    }
+    res.json(await checkWatch(watch));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Everything due, in the background — too slow to hold a request open. */
+app.post("/api/watchlist/check", (req, res) => {
+  const already = findRunning("watchlist-check");
+  if (already) {
+    res.status(409).json({ error: "A check is already running.", job: already });
+    return;
+  }
+  const force = Boolean(req.body?.force);
+  const limit = req.body?.limit ? clampInt(req.body.limit, 1, 100, 25) : undefined;
+  const job = startJob("watchlist-check", (report, signal) =>
+    checkWatchlist({ force, limit, signal, onProgress: report }),
+  );
+  res.status(202).json({ job });
+});
+
+app.get("/api/watchlist/check/:jobId", (req, res) => {
+  const job = getJob(String(req.params.jobId));
+  if (!job) {
+    res.status(404).json({ error: "No such job. It may have finished over an hour ago." });
+    return;
+  }
+  res.json({ job });
+});
+
+app.delete("/api/watchlist/check/:jobId", (req, res) => {
+  res.json({ cancelled: cancelJob(String(req.params.jobId)) });
+});
+
+app.post("/api/alerts/ack", async (req, res, next) => {
+  try {
+    const ids = req.body?.ids === "all" ? "all" : Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+    res.json({ acknowledged: await acknowledgeAlerts(ids) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.use(express.static(publicDir, { extensions: ["html"] }));
 
 // Anything else that is not an API path falls through to the single page.
@@ -246,6 +419,10 @@ function clampInt(value: unknown, lo: number, hi: number, fallback: number): num
   return Math.min(hi, Math.max(lo, Math.round(n)));
 }
 
+function isGrade(value: unknown): value is Grade {
+  return typeof value === "string" && value in GRADE_ORDER;
+}
+
 function positiveOrNull(value: unknown): number | null {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : null;
@@ -263,7 +440,7 @@ const port = Number(process.env.PORT ?? 3000);
 if (process.env.NODE_ENV !== "test") {
   app.listen(port, () => {
     const mode = isDemoMode() ? "sample data (no API key)" : `live search via ${modelId()}`;
-    console.log(`\n  Cellar Scout — shipping to ${DESTINATION.city}, ${DESTINATION.province}`);
+    console.log(`\n  Krasi Crazy — shipping to ${DESTINATION.city}, ${DESTINATION.province}`);
     console.log(`  http://localhost:${port}`);
     console.log(`  Mode: ${mode}\n`);
   });
