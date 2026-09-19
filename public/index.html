@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cellar Scout</title>
+<meta name="description" content="Find great wine, priced the way it actually arrives in Toronto." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/css/app.css" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%8D%B7%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap header-inner">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <h1>Cellar Scout</h1>
+        <p class="brand-sub">Wine priced the way it actually arrives in <strong>Toronto, Ontario</strong></p>
+      </div>
+    </div>
+    <div class="header-side">
+      <span id="mode-badge" class="badge badge-muted">checking…</span>
+      <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle colour scheme">◐</button>
+    </div>
+  </div>
+  <nav class="tabs wrap" role="tablist">
+    <button class="tab is-active" role="tab" data-tab="search" aria-selected="true">Find a wine</button>
+    <button class="tab" role="tab" data-tab="discover" aria-selected="false">Discover value</button>
+    <button class="tab" role="tab" data-tab="vintages" aria-selected="false">Vintage chart</button>
+    <button class="tab" role="tab" data-tab="costs" aria-selected="false">Landed cost</button>
+  </nav>
+</header>
+
+<main class="wrap">
+
+  <!-- ─────────────────────────────── SEARCH ─────────────────────────────── -->
+  <section id="panel-search" class="panel is-active" role="tabpanel">
+    <form id="search-form" class="search-form">
+      <div class="search-row">
+        <label class="sr-only" for="q">Wine name</label>
+        <input id="q" name="q" type="search" autocomplete="off" spellcheck="false"
+               placeholder="Guado al Tasso, Barolo Monprivato, Pingus…" required />
+        <button class="primary" type="submit">Search</button>
+      </div>
+      <p class="examples">
+        Try:
+        <button type="button" class="link-btn" data-example="Guado al Tasso">Guado al Tasso</button>
+        <button type="button" class="link-btn" data-example="Produttori del Barbaresco">Produttori del Barbaresco</button>
+        <button type="button" class="link-btn" data-example="La Rioja Alta Gran Reserva 904">Rioja Alta 904</button>
+        <button type="button" class="link-btn" data-example="Chateau Leoville Barton">Léoville Barton</button>
+      </p>
+
+      <details class="options">
+        <summary>Buying options</summary>
+        <div class="options-grid">
+          <label>Bottles per order
+            <input id="opt-quantity" type="number" min="1" max="120" value="6" />
+            <small>Freight is shared, so this changes the per-bottle price a lot.</small>
+          </label>
+          <label>When will you drink it?
+            <select id="opt-intent">
+              <option value="either">Some now, some later</option>
+              <option value="drink-now">Soon — ready to drink</option>
+              <option value="cellar">Cellaring for years</option>
+            </select>
+          </label>
+          <label>Ceiling per bottle, landed (CAD)
+            <input id="opt-max" type="number" min="0" step="5" placeholder="no limit" />
+          </label>
+          <label>Specific vintage
+            <input id="opt-vintage" type="number" min="1900" max="2030" placeholder="any" />
+          </label>
+          <label class="check"><input id="opt-oos" type="checkbox" /> Include out-of-stock listings</label>
+          <label class="check"><input id="opt-temp" type="checkbox" /> Temperature-controlled shipping</label>
+        </div>
+      </details>
+    </form>
+
+    <div id="search-status" class="status" hidden></div>
+    <div id="search-results"></div>
+  </section>
+
+  <!-- ────────────────────────────── DISCOVER ────────────────────────────── -->
+  <section id="panel-discover" class="panel" role="tabpanel">
+    <div class="intro">
+      <h2>Let the scout go hunting</h2>
+      <p>No wine in mind? It sweeps French, Italian and Spanish merchants for bottles trading below what their quality deserves — strong vintages overshadowed by a famous neighbour, good growers in unfashionable appellations, back vintages still at release price.</p>
+    </div>
+    <form id="discover-form" class="discover-form">
+      <div class="options-grid">
+        <fieldset class="countries">
+          <legend>Countries</legend>
+          <label class="check"><input type="checkbox" name="country" value="France" checked /> France</label>
+          <label class="check"><input type="checkbox" name="country" value="Italy" checked /> Italy</label>
+          <label class="check"><input type="checkbox" name="country" value="Spain" checked /> Spain</label>
+        </fieldset>
+        <label>Budget floor, landed (CAD)
+          <input id="disc-min" type="number" min="10" step="5" value="30" />
+        </label>
+        <label>Budget ceiling, landed (CAD)
+          <input id="disc-max" type="number" min="15" step="5" value="120" />
+        </label>
+        <label>Style
+          <select id="disc-style">
+            <option value="any">Any</option>
+            <option value="red">Red</option>
+            <option value="white">White</option>
+            <option value="sparkling">Sparkling</option>
+            <option value="sweet">Sweet</option>
+            <option value="rose">Rosé</option>
+          </select>
+        </label>
+        <label>How many picks
+          <input id="disc-count" type="number" min="3" max="15" value="8" />
+        </label>
+        <label class="wide">Anything particular?
+          <input id="disc-focus" type="text" placeholder="e.g. Nebbiolo under $70, or something for a cellar" />
+        </label>
+      </div>
+      <button class="primary" type="submit">Find me something</button>
+    </form>
+    <div id="discover-status" class="status" hidden></div>
+    <div id="discover-results"></div>
+  </section>
+
+  <!-- ────────────────────────────── VINTAGES ────────────────────────────── -->
+  <section id="panel-vintages" class="panel" role="tabpanel">
+    <div class="intro">
+      <h2>Which year should you buy?</h2>
+      <p>Consensus vintage quality, with a drinking window worked out from how each appellation ages. The <em>overlooked</em> column is where the value usually is: a strong year standing next to a famous one, marked down for no reason but fashion.</p>
+    </div>
+    <label class="region-picker">Region
+      <select id="region-select"></select>
+    </label>
+    <div id="vintage-results"></div>
+  </section>
+
+  <!-- ─────────────────────────────── COSTS ──────────────────────────────── -->
+  <section id="panel-costs" class="panel" role="tabpanel">
+    <div class="intro">
+      <h2>What will it actually cost me?</h2>
+      <p>Enter a price from anywhere in the world and see what lands in Toronto, line by line.</p>
+    </div>
+    <form id="cost-form" class="options-grid">
+      <label>Bottle price
+        <input id="cost-price" type="number" min="0" step="0.01" value="75" required />
+      </label>
+      <label>Currency
+        <select id="cost-currency">
+          <option>EUR</option><option>CAD</option><option>USD</option><option>GBP</option>
+          <option>CHF</option><option>AUD</option>
+        </select>
+      </label>
+      <label>Ships from
+        <select id="cost-zone"></select>
+      </label>
+      <label>Bottles
+        <input id="cost-qty" type="number" min="1" max="120" value="6" />
+      </label>
+      <label>Bottle size (ml)
+        <input id="cost-ml" type="number" min="187" max="18000" step="1" value="750" />
+      </label>
+      <label class="check"><input id="cost-temp" type="checkbox" /> Temperature-controlled</label>
+      <button class="primary wide" type="submit">Calculate</button>
+    </form>
+    <div id="cost-results"></div>
+    <div id="rate-card"></div>
+  </section>
+
+</main>
+
+<footer class="site-footer wrap">
+  <p><strong>Read this before you spend money.</strong> Landed costs are estimates built from published duty, excise and LCBO rates that change without notice; the LCBO markup is the softest number in the calculation. Ontario requires alcohol imported for personal use to be consigned through the LCBO. Prices and stock come from merchant pages at the moment of searching and go stale quickly. Verify with the merchant and with LCBO Private Ordering before committing to an order.</p>
+  <p class="muted">Vintage scores are an editorial consensus of the major published charts, kept in <code>src/data/vintage-chart.ts</code>. Producer matters more than vintage — a fine grower in an 88-point year beats a lazy one in a 97-point year.</p>
+</footer>
+
+<script src="/js/app.js" type="module"></script>
+</body>
+</html>
