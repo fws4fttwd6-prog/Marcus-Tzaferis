@@ -507,7 +507,8 @@ async function showVintages(key) {
         "section",
         { class: "card" },
         el("h3", {}, data.regionLabel),
-        el("p", { class: "muted", style: "margin:6px 0 0;font-size:.9rem" }, data.summary),
+        // The summary is carried by the guidance card below, so it is not
+        // repeated here.
         el(
           "div",
           { class: "vintage-grid" },
