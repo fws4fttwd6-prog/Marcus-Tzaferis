@@ -159,6 +159,21 @@ export const ZONES: Record<ShippingZone, ZoneProfile> = {
 /**
  * Editable rate card. Every number that touches money lives here.
  */
+/**
+ * EU and UK retail prices are quoted with that country's VAT included. VAT is
+ * not charged on goods exported to Canada, so a German shelf price of EUR 145
+ * is EUR 121.85 on an export invoice — and pricing the import off the shelf
+ * figure overstates the landed cost by roughly a fifth. A merchant who sells
+ * export-only, or quotes in bond, has already excluded it.
+ */
+export const VAT_BY_ZONE: Partial<Record<ShippingZone, number>> = {
+  france: 0.20,
+  italy: 0.22,
+  spain: 0.21,
+  "eu-other": 0.19,
+  uk: 0.20,
+};
+
 export const RATES = {
   /** Federal excise duty per litre of wine over 7% abv. Indexed every 1 April. */
   exciseCadPerLitre: 0.745,
@@ -207,6 +222,12 @@ export interface LandedCostInput {
   /** Some merchants ship free over a threshold; pass it to model that. */
   freeShippingOverCad?: number | null;
   temperatureControlled?: boolean;
+  /**
+   * True when `bottlePriceCad` is a consumer shelf price that includes the
+   * seller's local VAT. Defaults to true for EU and UK zones, because that is
+   * what a retail page shows. Set false for an in-bond or export-only quote.
+   */
+  priceIncludesVat?: boolean;
 }
 
 export interface CostLine {
@@ -225,6 +246,10 @@ export interface LandedCost {
   totalCad: number;
   /** Total divided by bottle count — the number worth comparing. */
   perBottleCad: number;
+  /** The per-bottle price on an export invoice, after any VAT is removed. */
+  exportPricePerBottleCad: number;
+  /** Seller's VAT removed per bottle; zero outside the EU and UK. */
+  vatStrippedCad: number;
   /** Everything that is not the wine itself, per bottle. */
   overheadPerBottleCad: number;
   /** Overhead as a share of the shelf price. */
@@ -245,6 +270,7 @@ export function estimateLandedCost(input: LandedCostInput): LandedCost {
     quotedShippingCad = null,
     freeShippingOverCad = null,
     temperatureControlled = false,
+    priceIncludesVat,
   } = input;
 
   const qty = Math.max(1, Math.round(quantity));
@@ -252,11 +278,21 @@ export function estimateLandedCost(input: LandedCostInput): LandedCost {
   const lines: CostLine[] = [];
   const caveats: string[] = [];
 
-  const goods = bottlePriceCad * qty;
+  // Strip the seller's VAT before anything else: Canadian charges apply to the
+  // export value, not to the price a local consumer would pay.
+  const vatRate = VAT_BY_ZONE[zone] ?? 0;
+  const stripVat = vatRate > 0 && (priceIncludesVat ?? true);
+  const exportPricePerBottle = stripVat
+    ? round2(bottlePriceCad / (1 + vatRate))
+    : bottlePriceCad;
+
+  const goods = exportPricePerBottle * qty;
   lines.push({
     label: "Wine",
     amountCad: goods,
-    detail: `${qty} × ${money(bottlePriceCad)}`,
+    detail: stripVat
+      ? `${qty} × ${money(exportPricePerBottle)} — ${money(bottlePriceCad)} shelf price less ${(vatRate * 100).toFixed(0)}% VAT, which is not charged on export`
+      : `${qty} × ${money(bottlePriceCad)}`,
   });
 
   // ---- Freight -------------------------------------------------------------
@@ -265,7 +301,9 @@ export function estimateLandedCost(input: LandedCostInput): LandedCost {
   if (quotedShippingCad !== null && quotedShippingCad !== undefined) {
     freight = quotedShippingCad;
     freightDetail = "vendor's quoted rate";
-  } else if (freeShippingOverCad !== null && goods >= freeShippingOverCad) {
+  } else if (freeShippingOverCad !== null && bottlePriceCad * qty >= freeShippingOverCad) {
+    // The threshold is measured against what the customer is billed — the
+    // shelf total including VAT — not against the ex-VAT export value.
     freight = 0;
     freightDetail = `free over ${money(freeShippingOverCad)}`;
   } else {
@@ -334,6 +372,11 @@ export function estimateLandedCost(input: LandedCostInput): LandedCost {
     caveats.push(
       "The LCBO markup is the softest number in this estimate. Confirm the current schedule with LCBO Private Ordering before a large order.",
     );
+    if (stripVat) {
+      caveats.push(
+        `The merchant's shelf price includes ${(vatRate * 100).toFixed(0)}% VAT, removed here because it is not charged on export. Confirm they actually deduct it — not every retailer does for a private buyer.`,
+      );
+    }
   }
 
   // ---- HST -----------------------------------------------------------------
@@ -378,8 +421,10 @@ export function estimateLandedCost(input: LandedCostInput): LandedCost {
     lines: lines.map((l) => ({ ...l, amountCad: round2(l.amountCad) })),
     totalCad: round2(total),
     perBottleCad: round2(perBottle),
-    overheadPerBottleCad: round2(perBottle - bottlePriceCad),
-    overheadRatio: round2((perBottle - bottlePriceCad) / Math.max(bottlePriceCad, 0.01)),
+    exportPricePerBottleCad: exportPricePerBottle,
+    vatStrippedCad: round2(bottlePriceCad - exportPricePerBottle),
+    overheadPerBottleCad: round2(perBottle - exportPricePerBottle),
+    overheadRatio: round2((perBottle - exportPricePerBottle) / Math.max(exportPricePerBottle, 0.01)),
     transitDays: profile.transitDays,
     confidence,
     uncertaintyPct,
