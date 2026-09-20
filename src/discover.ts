@@ -15,6 +15,7 @@ import {
 import { extract, runResearch } from "./claude/research.js";
 import { DiscoveryExtractionSchema, type DiscoveryExtraction } from "./claude/schemas.js";
 import { demoDiscoveryExtraction } from "./data/demo.js";
+import { blankToNull } from "./search.js";
 
 export interface DiscoverOptions {
   countries: string[];
@@ -86,7 +87,15 @@ export async function discoverWines(
   }
   const asOf = currentYear();
 
-  const picks: DiscoveryPick[] = extraction.picks.map((raw) => {
+  const picks: DiscoveryPick[] = extraction.picks.map((rawIn) => {
+    const raw = {
+      ...rawIn,
+      vendorName: blankToNull(rawIn.vendorName),
+      vendorCountry: blankToNull(rawIn.vendorCountry),
+      productUrl: blankToNull(rawIn.productUrl),
+      currency: blankToNull(rawIn.currency),
+      criticSource: blankToNull(rawIn.criticSource),
+    };
     const regionKey =
       resolveRegionKey(raw.regionHint) ?? resolveRegionKey(raw.appellation) ?? null;
     const region = regionKey ? REGION_BY_KEY.get(regionKey) : undefined;

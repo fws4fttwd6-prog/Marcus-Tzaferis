@@ -8,6 +8,7 @@ import {
 } from "./domain/landed-cost.js";
 import {
   DEFAULT_SEARCH_OPTIONS,
+  type Listing,
   type ScoredListing,
   type SearchOptions,
   type SearchResult,
@@ -70,6 +71,20 @@ export async function searchWine(
     sources = mergeSources(research.sources, extraction.sources);
   }
 
+  // The extraction schema uses "" for text it could not find, to stay under
+  // the API's cap on union-typed parameters. Restore nulls at the boundary so
+  // nothing downstream has to know about that.
+  const rawListings: Listing[] = extraction.listings.map((l) => ({
+    ...l,
+    vendorCountry: blankToNull(l.vendorCountry),
+    vendorRegion: blankToNull(l.vendorRegion),
+    vendorCity: blankToNull(l.vendorCity),
+    productUrl: blankToNull(l.productUrl),
+    shippingNote: blankToNull(l.shippingNote),
+    criticSource: blankToNull(l.criticSource),
+    sourceUrl: blankToNull(l.sourceUrl),
+  }));
+
   const identity = buildIdentity(query, extraction);
   const fx = await getFxTable();
   if (fx.stale) {
@@ -81,7 +96,7 @@ export async function searchWine(
   const asOf = currentYear();
 
   // ---- Price every listing in Toronto terms --------------------------------
-  const priced = extraction.listings
+  const priced = rawListings
     .filter((l) => Number.isFinite(l.price) && l.price > 0)
     .filter((l) => options.includeOutOfStock || l.inStock !== false)
     .filter((l) => options.vintage === null || l.vintage === options.vintage)
@@ -133,7 +148,7 @@ export async function searchWine(
 
   if (!priced.length) {
     warnings.push(
-      extraction.listings.length
+      rawListings.length
         ? "Every listing found was filtered out by your options. Try widening them."
         : "No merchant listings were found for this wine.",
     );
@@ -305,6 +320,12 @@ function mergeSources(
     if (s.url && !seen.has(s.url)) seen.set(s.url, s.title || s.url);
   }
   return [...seen.entries()].map(([url, title]) => ({ title, url }));
+}
+
+/** "" is how the extraction schema spells "not found". */
+export function blankToNull(value: string | null | undefined): string | null {
+  const t = (value ?? "").trim();
+  return t === "" ? null : t;
 }
 
 function listingId(l: { vendorName: string; vintage: number | null; productUrl: string | null }): string {

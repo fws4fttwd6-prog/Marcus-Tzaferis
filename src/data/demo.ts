@@ -208,9 +208,9 @@ function genericExtraction(query: string): SearchExtraction {
       return {
         vendorName: v.name,
         vendorCountry: v.country,
-        vendorRegion: v.country === "Canada" ? "Ontario" : null,
+        vendorRegion: v.country === "Canada" ? "Ontario" : "",
         vendorCity: v.city,
-        productUrl: null,
+        productUrl: "",
         vintage: year,
         bottleMl: 750,
         price,
@@ -223,7 +223,7 @@ function genericExtraction(query: string): SearchExtraction {
         freeShippingOver: null,
         criticScore: (VINTAGE_CHART[regionKey]?.[year] ?? 90) - 1 + (vi % 3),
         criticSource: "sample",
-        sourceUrl: null,
+        sourceUrl: "",
       };
     }),
   );

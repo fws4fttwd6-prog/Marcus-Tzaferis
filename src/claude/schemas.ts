@@ -1,24 +1,40 @@
 import { z } from "zod";
 
 /**
- * Schemas for the structured-extraction pass. Every field is `.nullable()`
- * rather than `.optional()`: strict JSON schemas want a value for each key,
- * and "we could not find this" is information worth keeping.
+ * Schemas for the structured-extraction pass.
+ *
+ * Absent values are expressed two ways, for a reason. Numbers, booleans and
+ * years use `.nullable()`, because there is no in-band value that means
+ * "unknown" for them. Free text uses an empty string instead, transformed
+ * back to `null` on parse, so the consuming code still sees `string | null`.
+ *
+ * That split is not stylistic. The API caps a response schema at 16
+ * union-typed parameters — every `.nullable()` is one — and this schema had
+ * 19, which it rejects outright with a 400. Keeping text out of the union
+ * count holds it at 13 with room to grow.
  */
+
+/**
+ * Free text the model may not find. Stays a plain string here — zod cannot
+ * represent a transform in JSON Schema — and `blankToNull` in the callers
+ * turns "" back into null at the boundary.
+ */
+const maybeText = (description: string) =>
+  z.string().describe(`${description}. Use an empty string if not stated.`);
 
 export const ListingSchema = z.object({
   vendorName: z.string().describe("Retailer or merchant name, e.g. 'Millesima' or 'LCBO Vintages'"),
   vendorCountry: z.string().nullable().describe("Country the vendor ships from, in English"),
-  vendorRegion: z.string().nullable().describe("State or province, if known"),
-  vendorCity: z.string().nullable().describe("City the vendor ships from, if known"),
-  productUrl: z.string().nullable().describe("Direct link to the product page"),
+  vendorRegion: maybeText("State or province the vendor ships from"),
+  vendorCity: maybeText("City the vendor ships from"),
+  productUrl: maybeText("Direct link to the product page"),
   vintage: z.number().int().nullable().describe("Vintage year; null for non-vintage"),
   bottleMl: z.number().int().describe("Bottle size in millilitres; 750 unless stated otherwise"),
   price: z.number().describe("Price for ONE bottle in the vendor's own currency"),
   currency: z.string().describe("ISO currency code of the price, e.g. EUR, USD, CAD, GBP"),
   inStock: z.boolean().nullable(),
   quantityAvailable: z.number().int().nullable(),
-  shippingNote: z.string().nullable().describe("What the vendor says about shipping, verbatim if short"),
+  shippingNote: maybeText("What the vendor says about shipping, verbatim if short"),
   quotedShipping: z
     .number()
     .nullable()
@@ -32,8 +48,8 @@ export const ListingSchema = z.object({
     .number()
     .nullable()
     .describe("Critic score on the 100-point scale for this exact wine and vintage"),
-  criticSource: z.string().nullable().describe("Who gave that score, e.g. 'Vinous', 'Wine Advocate'"),
-  sourceUrl: z.string().nullable().describe("The page this listing was read from"),
+  criticSource: maybeText("Who gave that score, e.g. 'Vinous' or 'Wine Advocate'"),
+  sourceUrl: maybeText("The page this listing was read from"),
 });
 
 export const IdentitySchema = z.object({
@@ -80,14 +96,14 @@ export const DiscoveryPickSchema = z.object({
   vintage: z.number().int().nullable(),
   style: z.enum(["red", "white", "sparkling", "sweet", "rose", "unknown"]),
   grapes: z.array(z.string()),
-  vendorName: z.string().nullable(),
-  vendorCountry: z.string().nullable(),
-  productUrl: z.string().nullable(),
+  vendorName: maybeText("Merchant offering it"),
+  vendorCountry: maybeText("Country the merchant ships from"),
+  productUrl: maybeText("Direct link to the product page"),
   price: z.number().nullable().describe("Price for one bottle in the vendor's currency"),
-  currency: z.string().nullable(),
+  currency: maybeText("ISO currency code of the price"),
   bottleMl: z.number().int().nullable(),
   criticScore: z.number().nullable(),
-  criticSource: z.string().nullable(),
+  criticSource: maybeText("Who gave that score"),
   rationale: z.string().describe("Why this is unusually good value, in one or two sentences"),
 });
 
