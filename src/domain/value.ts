@@ -63,8 +63,13 @@ export function scoreDeal(input: ScoreInput): DealScore {
 
   // ---- Penalties that are about buying, not about the wine -----------------
   if (input.inStock === false) {
-    score -= 12;
-    warnings.push("Listed as out of stock — the price may be a ghost.");
+    score -= 22;
+    warnings.push("Listed as out of stock — you cannot buy this, whatever it costs.");
+  } else if (input.inStock === null) {
+    // A price with no confirmed stock is the commonest trap in wine research:
+    // old listings sit online for years. Worth less than a confirmed bottle.
+    score -= 5;
+    warnings.push("Stock is unconfirmed — check the listing is live before counting on it.");
   }
   if (input.shipsToCanada === false) {
     score -= 18;

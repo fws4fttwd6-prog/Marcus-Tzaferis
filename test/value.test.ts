@@ -72,8 +72,24 @@ describe("scoreDeal", () => {
     expect(doesNot.warnings.join(" ")).toMatch(/does not ship to Canada/);
   });
 
-  it("penalises an out-of-stock listing", () => {
-    expect(scoreDeal({ ...baseline, inStock: false }).score).toBeLessThan(scoreDeal(baseline).score);
+  it("ranks confirmed stock above unknown stock above no stock", () => {
+    // A bottle you cannot buy is worth nothing however cheap it looks, and a
+    // price with no confirmed stock is the commonest trap in wine research.
+    const confirmed = scoreDeal({ ...baseline, inStock: true }).score;
+    const unknown = scoreDeal({ ...baseline, inStock: null }).score;
+    const gone = scoreDeal({ ...baseline, inStock: false }).score;
+    expect(confirmed).toBeGreaterThan(unknown);
+    expect(unknown).toBeGreaterThan(gone);
+  });
+
+  it("says out loud that an out-of-stock bottle cannot be bought", () => {
+    const d = scoreDeal({ ...baseline, inStock: false });
+    expect(d.warnings.join(" ")).toMatch(/cannot buy this/);
+  });
+
+  it("flags unconfirmed stock rather than passing it off as available", () => {
+    const d = scoreDeal({ ...baseline, inStock: null });
+    expect(d.warnings.join(" ")).toMatch(/Stock is unconfirmed/);
   });
 
   it("warns when the estimate rests on soft inputs", () => {

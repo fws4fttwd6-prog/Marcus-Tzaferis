@@ -276,6 +276,14 @@ function buildRecommendation(
     }, landing at about $${best.landedPer750Cad.toFixed(2)} a bottle in Toronto on a ${options.quantity}-bottle order.`,
   );
 
+  if (best.inStock === false) {
+    parts.push("It is listed as out of stock, so treat that price as indicative only.");
+  } else if (best.inStock === null) {
+    parts.push(
+      "Stock was not confirmed on the page, so check it is actually available before making the trip.",
+    );
+  }
+
   if (best.vintageAssessment?.score) {
     const v = best.vintageAssessment;
     parts.push(

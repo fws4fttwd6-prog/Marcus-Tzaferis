@@ -35,6 +35,11 @@ it, its LCBO product number. If you genuinely cannot find the wine at the LCBO,
 say so explicitly rather than leaving it out — "not listed at the LCBO" is a
 finding the client needs.
 
+And check whether each LCBO listing is actually in stock. Product pages for
+old vintages stay online for years after the wine has gone, showing a price
+next to "out of stock" — reporting one of those as available sends the client
+to a shelf that does not have it.
+
 Follow through to actual merchant pages. An aggregator's average price is useful context but it is not a listing.
 
 WHAT COUNTS AS A LISTING
@@ -42,7 +47,12 @@ WHAT COUNTS AS A LISTING
 A listing is one bottle, offered by one named merchant, at a stated price, on a page you actually retrieved. For each one, capture:
   - the merchant's name, and the country and city they ship FROM (this drives the whole shipping calculation — get it right, and never guess a country from the merchant's name)
   - the vintage year, the bottle size in millilitres, the price, and the currency that price is in
-  - whether it is in stock, and how many bottles are available
+  - whether it is in stock, and how many bottles are available. Say so plainly
+    when a page shows the wine as out of stock, sold out, or unavailable, and
+    say "unknown" when the page does not state it. Do not infer availability
+    from the presence of a price: a listed price with no stock is the most
+    common trap in this work, and an unbuyable bottle is worth nothing to the
+    client however cheap it looks.
   - anything the page says about shipping to Canada, including a quoted rate or a free-shipping threshold
   - the direct URL of the product page
 
