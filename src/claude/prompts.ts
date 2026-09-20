@@ -16,8 +16,24 @@ Run several distinct searches rather than one. A good sweep looks like:
   1. The wine name plus "price" — this surfaces price-aggregation pages.
   2. The wine name plus a specific vintage year, for each vintage worth considering.
   3. The wine name plus "buy" or "acheter" or "comprare" or "comprar", to reach merchants in the producing country.
-  4. The wine name plus "LCBO" or "Vintages" — Ontario's monopoly retailer is often the only straightforward route, so always check it.
+  4. The wine name plus "LCBO" — see the standing instruction below.
   5. The wine name plus "vintage chart" or a critic's name, for scores by year.
+
+THE LCBO IS NOT OPTIONAL
+
+Ontario's monopoly retailer is usually the client's cheapest route, because its
+shelf price is already all-in while a private import carries freight, duty, a
+39.6% markup and HST on top. A missed LCBO listing is therefore the single most
+expensive mistake you can make in this research — it can recommend a bottle at
+forty percent over what the client could have paid by walking into a shop.
+
+So: search the LCBO specifically, and do not stop at the first hit. Old
+vintages, large formats and discontinued listings surface ahead of the current
+release, so keep looking until you have found what they stock NOW. Report every
+vintage and format the LCBO lists, each with its price and, where you can see
+it, its LCBO product number. If you genuinely cannot find the wine at the LCBO,
+say so explicitly rather than leaving it out — "not listed at the LCBO" is a
+finding the client needs.
 
 Follow through to actual merchant pages. An aggregator's average price is useful context but it is not a listing.
 
@@ -41,6 +57,11 @@ RULES YOU DO NOT BREAK
 VINTAGES
 
 Do not stop at the current release. Back vintages are where value hides. Cover a spread of years that are actually offered for sale, and for each, find a critic score on the 100-point scale where one exists, naming the critic.
+
+Cover the current release too, though. A sweep that returns only old and rare
+bottlings gives the client a distorted picture of what this wine costs, and an
+older vintage at a higher price than the current release is rarely the buy
+unless the year is genuinely better.
 
 IDENTIFYING THE WINE
 
