@@ -103,13 +103,21 @@ async function main(): Promise<void> {
         process.exitCode = 1;
         return;
       }
-      const result = await searchWine(query, {
-        quantity: Number(values.quantity) || 6,
-        intent: (values.intent as "drink-now" | "cellar" | "either") ?? "either",
-        vintage: values.vintage ? Number(values.vintage) : null,
-        maxPriceCad: values.max ? Number(values.max) : null,
-        includeOutOfStock: Boolean(values["include-oos"]),
-      });
+      const stop = startTicker(
+        `Searching merchants for “${query}” and pricing them to Toronto — this takes a few minutes`,
+      );
+      let result;
+      try {
+        result = await searchWine(query, {
+          quantity: Number(values.quantity) || 6,
+          intent: (values.intent as "drink-now" | "cellar" | "either") ?? "either",
+          vintage: values.vintage ? Number(values.vintage) : null,
+          maxPriceCad: values.max ? Number(values.max) : null,
+          includeOutOfStock: Boolean(values["include-oos"]),
+        });
+      } finally {
+        stop();
+      }
 
       if (values.json) {
         console.log(JSON.stringify(result, null, 2));
@@ -150,12 +158,18 @@ async function main(): Promise<void> {
     }
 
     case "discover": {
-      const result = await discoverWines({
-        count: Number(values.count) || 8,
-        minPriceCad: Number(values.min) || 30,
-        maxPriceCad: Number(values.max) || 120,
-        focus: values.focus ?? null,
-      });
+      const stopD = startTicker("Sweeping French, Italian and Spanish merchants for value");
+      let result;
+      try {
+        result = await discoverWines({
+          count: Number(values.count) || 8,
+          minPriceCad: Number(values.min) || 30,
+          maxPriceCad: Number(values.max) || 120,
+          focus: values.focus ?? null,
+        });
+      } finally {
+        stopD();
+      }
       if (values.json) {
         console.log(JSON.stringify(result, null, 2));
         return;
@@ -321,6 +335,32 @@ async function main(): Promise<void> {
       console.log(HELP);
       process.exitCode = 1;
   }
+}
+
+/**
+ * A live search runs for minutes with nothing to show. Without this the
+ * terminal looks frozen, which is indistinguishable from broken.
+ */
+function startTicker(label: string): () => void {
+  if (!process.stderr.isTTY) {
+    process.stderr.write(`${label}\n`);
+    return () => {};
+  }
+  const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  const started = Date.now();
+  let i = 0;
+  const tick = () => {
+    const secs = Math.floor((Date.now() - started) / 1000);
+    const mins = Math.floor(secs / 60);
+    const elapsed = mins ? `${mins}m ${String(secs % 60).padStart(2, "0")}s` : `${secs}s`;
+    process.stderr.write(`\r  ${frames[i++ % frames.length]}  ${label}  ${elapsed}   `);
+  };
+  tick();
+  const timer = setInterval(tick, 120);
+  return () => {
+    clearInterval(timer);
+    process.stderr.write("\r" + " ".repeat(label.length + 30) + "\r");
+  };
 }
 
 function wrap(text: string, width: number, indent: string): string {

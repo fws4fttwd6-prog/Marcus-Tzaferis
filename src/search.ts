@@ -285,10 +285,20 @@ function buildRecommendation(
     );
   }
 
-  const cheapestShelf = [...listings].sort((a, b) => a.priceCad - b.priceCad)[0]!;
-  if (cheapestShelf.id !== best.id) {
+  // Only worth saying when a *different* merchant looks cheaper on the shelf
+  // and turns out dearer delivered — that is the point being made. Comparing
+  // two listings from the same merchant, or one that is genuinely cheaper
+  // both ways, produces a sentence that contradicts itself.
+  const cheapestShelf = [...listings].sort(
+    (a, b) => a.priceCad * (750 / a.bottleMl) - b.priceCad * (750 / b.bottleMl),
+  )[0]!;
+  if (
+    cheapestShelf.id !== best.id &&
+    cheapestShelf.vendorName !== best.vendorName &&
+    cheapestShelf.landedPer750Cad > best.landedPer750Cad
+  ) {
     parts.push(
-      `${cheapestShelf.vendorName} shows a lower shelf price, but once freight and Ontario's import charges are added it works out to $${cheapestShelf.landedPer750Cad.toFixed(2)} — which is why shelf price alone is misleading.`,
+      `${cheapestShelf.vendorName} looks cheaper on the shelf, but delivered it works out to $${cheapestShelf.landedPer750Cad.toFixed(2)} — which is why shelf price alone is misleading.`,
     );
   }
 

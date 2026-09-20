@@ -54,14 +54,17 @@ export interface ZoneProfile {
 export const ZONES: Record<ShippingZone, ZoneProfile> = {
   ontario: {
     zone: "ontario",
+    // Default is that you walk in and buy it: no freight, no extra tax, the
+    // shelf price is the price. Home delivery is an extra the caller opts
+    // into by passing `quotedShippingCad`.
     label: "Ontario (LCBO, Vintages, local agents)",
-    baseCad: 12,
-    perBottleCad: 1.5,
+    baseCad: 0,
+    perBottleCad: 0,
     typicalMinBottles: 1,
-    transitDays: [1, 7],
+    transitDays: [0, 7],
     imported: false,
     notes:
-      "Price on the shelf is already all-in. Vintages Shop Online delivers to a store free, or to your door for a flat fee.",
+      "The shelf price is all-in — Ontario tax and the LCBO's markup are already in it. Vintages Shop Online delivers to a store free; home delivery is roughly $12 plus a little per bottle.",
   },
   "canada-other": {
     zone: "canada-other",
@@ -380,17 +383,31 @@ export function estimateLandedCost(input: LandedCostInput): LandedCost {
   }
 
   // ---- HST -----------------------------------------------------------------
-  const hst = total * RATES.hst;
-  lines.push({
-    label: `HST (${(RATES.hst * 100).toFixed(0)}%)`,
-    amountCad: hst,
-    detail: DESTINATION.province,
-  });
-  total += hst;
+  // Only an import attracts HST here. A price on an LCBO shelf — or any
+  // Canadian retailer's listed price — is already tax-in, so adding 13% on
+  // top of it overstates the cost of simply buying the bottle locally, which
+  // is exactly the comparison this app exists to get right.
+  if (profile.imported) {
+    const hst = total * RATES.hst;
+    lines.push({
+      label: `HST (${(RATES.hst * 100).toFixed(0)}%)`,
+      amountCad: hst,
+      detail: DESTINATION.province,
+    });
+    total += hst;
+  } else {
+    lines.push({
+      label: "HST",
+      amountCad: 0,
+      detail: "already included in a Canadian retailer's price",
+    });
+  }
 
-  if (!profile.imported && zone === "ontario") {
+  if (zone === "ontario") {
     caveats.push(
-      "LCBO shelf prices already include markup and tax, so the only thing added here is delivery.",
+      quotedShippingCad !== null && quotedShippingCad !== undefined
+        ? "LCBO shelf prices are already all-in, so the only thing added is the delivery you entered."
+        : "Assumes you collect it in store, which costs nothing. Vintages home delivery adds roughly $12 plus a little per bottle.",
     );
   }
   if (zone === "canada-other") {
@@ -475,7 +492,9 @@ export function zoneForLocation(
 }
 
 function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+  const r = Math.round(n * 100) / 100;
+  // Normalise -0, which is a real value in JS and reads badly in output.
+  return r === 0 ? 0 : r;
 }
 
 function money(n: number): string {

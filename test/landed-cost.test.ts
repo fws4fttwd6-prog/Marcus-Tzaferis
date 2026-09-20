@@ -51,10 +51,30 @@ describe("estimateLandedCost", () => {
     expect(curve[0]!.perBottleCad - curve[3]!.perBottleCad).toBeGreaterThan(20);
   });
 
-  it("applies HST to everything", () => {
-    const c = estimateLandedCost({ ...base, zone: "ontario" });
+  it("applies HST to an import", () => {
+    const c = estimateLandedCost({ ...base, zone: "italy" });
     const hst = c.lines.find((l) => l.label.startsWith("HST"))!;
     expect(hst.amountCad).toBeCloseTo((c.totalCad / (1 + RATES.hst)) * RATES.hst, 1);
+  });
+
+  it("adds no HST to a Canadian retailer's price, which is already tax-in", () => {
+    const c = estimateLandedCost({ ...base, zone: "ontario" });
+    expect(c.lines.find((l) => l.label.startsWith("HST"))!.amountCad).toBe(0);
+  });
+
+  it("lands an LCBO bottle at exactly its shelf price when collected in store", () => {
+    // Walk in, pay the ticket price. No freight, no duty, no extra tax.
+    const c = estimateLandedCost({ bottlePriceCad: 204.95, zone: "ontario", quantity: 6 });
+    expect(c.perBottleCad).toBeCloseTo(204.95, 2);
+    expect(c.overheadPerBottleCad).toBe(0);
+    expect(c.caveats.join(" ")).toMatch(/collect it in store/);
+  });
+
+  it("still counts delivery when you ask for it to be shipped", () => {
+    const c = estimateLandedCost({
+      bottlePriceCad: 204.95, zone: "ontario", quantity: 6, quotedShippingCad: 12,
+    });
+    expect(c.totalCad).toBeCloseTo(204.95 * 6 + 12, 2);
   });
 
   it("uses the vendor's quote over its own estimate", () => {

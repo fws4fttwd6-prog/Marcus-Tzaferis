@@ -51,11 +51,16 @@ describe("searchWine, end to end on sample data", () => {
     }
 
     for (const l of result.listings) {
-      // Importing always costs more than the shelf price, compared like for
-      // like: landedPer750Cad is a 750ml equivalent, so the shelf price has
-      // to be scaled the same way before the two can be set against each other.
+      // Compared like for like: landedPer750Cad is a 750ml equivalent, so the
+      // shelf price is scaled the same way. An import always costs more than
+      // its shelf price; a bottle collected from an Ontario shop costs exactly
+      // its shelf price, because that ticket is already all-in.
       const shelfPer750 = l.priceCad * (750 / l.bottleMl);
-      expect(l.landedPer750Cad).toBeGreaterThan(shelfPer750);
+      if (l.zone === "ontario") {
+        expect(l.landedPer750Cad).toBeCloseTo(shelfPer750, 2);
+      } else {
+        expect(l.landedPer750Cad).toBeGreaterThan(shelfPer750);
+      }
       expect(l.landed.lines.length).toBeGreaterThan(2);
       expect(l.landedCurve.length).toBe(4);
       expect(l.deal.score).toBeGreaterThanOrEqual(0);
