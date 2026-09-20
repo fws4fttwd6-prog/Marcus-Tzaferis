@@ -26,6 +26,7 @@ export async function runResearch(args: {
   system: string;
   prompt: string;
   maxSearches?: number;
+  maxFetches?: number;
   allowedDomains?: string[];
   effort?: "low" | "medium" | "high" | "xhigh";
   signal?: AbortSignal;
@@ -41,6 +42,24 @@ export async function runResearch(args: {
   };
   if (args.allowedDomains?.length) webSearch.allowed_domains = args.allowedDomains;
 
+  /**
+   * Search results alone are not enough for retail.
+   *
+   * A search index returns whatever it cached, which for the LCBO means old
+   * vintage pages and years-old Vintages release PDFs — complete with prices
+   * for wine that left the shelves long ago. Fetching the page reads what it
+   * says now, including whether the bottle is actually in stock. Fetch is
+   * limited to URLs already in the conversation, so search finds the page and
+   * this reads it.
+   */
+  const webFetch: Record<string, unknown> = {
+    type: "web_fetch_20260209",
+    name: "web_fetch",
+    max_uses: args.maxFetches ?? 10,
+    citations: { enabled: true },
+    max_content_tokens: 20000,
+  };
+
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: args.prompt }];
   const collected: Anthropic.ContentBlock[] = [];
   let searchCount = 0;
@@ -52,7 +71,10 @@ export async function runResearch(args: {
         max_tokens: 32000,
         system: [{ type: "text", text: args.system, cache_control: { type: "ephemeral" } }],
         output_config: { effort: args.effort ?? "high" },
-        tools: [webSearch as unknown as Anthropic.ToolUnion],
+        tools: [
+          webSearch as unknown as Anthropic.ToolUnion,
+          webFetch as unknown as Anthropic.ToolUnion,
+        ],
         messages,
       },
       args.signal ? { signal: args.signal } : undefined,

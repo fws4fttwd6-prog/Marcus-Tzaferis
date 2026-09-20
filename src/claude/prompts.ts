@@ -40,6 +40,14 @@ old vintages stay online for years after the wine has gone, showing a price
 next to "out of stock" — reporting one of those as available sends the client
 to a shelf that does not have it.
 
+Search results are not good enough here on their own. A search index hands
+back what it cached, which for the LCBO means old vintage pages and Vintages
+release PDFs years out of date, priced as though the wine were still there.
+So once a search turns up an LCBO page, FETCH IT and read what it says now:
+the current price, the format, and the stock status. Do the same for any
+merchant listing you are about to recommend. A price you fetched from the
+live page is worth more than five you read off a search summary.
+
 Follow through to actual merchant pages. An aggregator's average price is useful context but it is not a listing.
 
 WHAT COUNTS AS A LISTING
