@@ -47,6 +47,48 @@ async function api(path, body, method) {
   return data;
 }
 
+
+/**
+ * Long jobs.
+ *
+ * A live search runs for minutes, far longer than a browser will hold a
+ * request open, so the server hands back a job and we poll it. `start`
+ * returns either a finished result (a cache hit) or a job to follow.
+ */
+async function runLongJob(startPath, body, pollPath, onTick) {
+  const started = await api(startPath, body);
+  if (!started.job) return started; // cached — already done
+
+  let jobId = started.job.id;
+  const begun = Date.now();
+
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 2000));
+    let poll;
+    try {
+      poll = await api(`${pollPath}/${jobId}`);
+    } catch (err) {
+      // A restarted server forgets its jobs; say so plainly.
+      throw new Error("Lost track of that search — the app may have restarted. Try again.");
+    }
+    const job = poll.job;
+    const secs = Math.floor((Date.now() - begun) / 1000);
+    onTick?.(secs);
+
+    if (job.status === "done") {
+      if (!job.result) throw new Error("The search finished but returned nothing.");
+      return job.result;
+    }
+    if (job.status === "error") throw new Error(job.error || "The search failed.");
+    if (job.status === "cancelled") throw new Error("That search was cancelled.");
+  }
+}
+
+function elapsedLabel(secs) {
+  if (secs < 60) return `${secs}s`;
+  return `${Math.floor(secs / 60)}m ${String(secs % 60).padStart(2, "0")}s`;
+}
+
 /* ── Chrome ─────────────────────────────────────────────────────────────── */
 
 function initTheme() {
@@ -395,15 +437,25 @@ function initSearch() {
     setStatus(status, "working", `Searching merchants for “${query}” and pricing them to Toronto. This takes a minute or two.`);
 
     try {
-      const data = await api("/api/search", {
-        query,
-        quantity: Number($("#opt-quantity").value) || 6,
-        intent: $("#opt-intent").value,
-        maxPriceCad: Number($("#opt-max").value) || null,
-        vintage: Number($("#opt-vintage").value) || null,
-        includeOutOfStock: $("#opt-oos").checked,
-        temperatureControlled: $("#opt-temp").checked,
-      });
+      const data = await runLongJob(
+        "/api/search",
+        {
+          query,
+          quantity: Number($("#opt-quantity").value) || 6,
+          intent: $("#opt-intent").value,
+          maxPriceCad: Number($("#opt-max").value) || null,
+          vintage: Number($("#opt-vintage").value) || null,
+          includeOutOfStock: $("#opt-oos").checked,
+          temperatureControlled: $("#opt-temp").checked,
+        },
+        "/api/search",
+        (secs) =>
+          setStatus(
+            status,
+            "working",
+            `Searching merchants for “${query}” and pricing them to Toronto — ${elapsedLabel(secs)} so far. This usually takes three to five minutes.`,
+          ),
+      );
       setStatus(status, null);
       results.replaceChildren(renderSearch(data));
       results.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -463,14 +515,24 @@ function initDiscover() {
     setStatus(status, "working", "Sweeping merchants across France, Italy and Spain. This takes a couple of minutes.");
 
     try {
-      const data = await api("/api/discover", {
-        countries: $$("input[name=country]:checked", form).map((i) => i.value),
-        minPriceCad: Number($("#disc-min").value) || 30,
-        maxPriceCad: Number($("#disc-max").value) || 120,
-        style: $("#disc-style").value,
-        count: Number($("#disc-count").value) || 8,
-        focus: $("#disc-focus").value.trim() || null,
-      });
+      const data = await runLongJob(
+        "/api/discover",
+        {
+          countries: $$("input[name=country]:checked", form).map((i) => i.value),
+          minPriceCad: Number($("#disc-min").value) || 30,
+          maxPriceCad: Number($("#disc-max").value) || 120,
+          style: $("#disc-style").value,
+          count: Number($("#disc-count").value) || 8,
+          focus: $("#disc-focus").value.trim() || null,
+        },
+        "/api/discover",
+        (secs) =>
+          setStatus(
+            status,
+            "working",
+            `Sweeping merchants across France, Italy and Spain — ${elapsedLabel(secs)} so far. This usually takes a few minutes.`,
+          ),
+      );
       setStatus(status, null);
 
       const out = el("div", {});

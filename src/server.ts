@@ -184,12 +184,34 @@ app.post("/api/search", async (req, res, next) => {
       }
     }
 
-    const result = await searchWine(query, options);
-    searchCache.set(key, result);
-    res.json({ ...result, cached: false });
+    // A live search runs for minutes. Holding the HTTP request open that long
+    // gets it killed by the browser, the OS or anything in between — which is
+    // exactly what "Failed to fetch" was. Hand back a job and let the page
+    // poll instead.
+    const running = findRunning(`search:${key}`);
+    if (running) {
+      res.status(202).json({ job: running });
+      return;
+    }
+    const job = startJob(`search:${key}`, async () => {
+      const result = await searchWine(query, options);
+      searchCache.set(key, result);
+      return result;
+    });
+    res.status(202).json({ job });
   } catch (err) {
     next(err);
   }
+});
+
+/** Poll a running search. The job carries the finished result when done. */
+app.get("/api/search/:jobId", (req, res) => {
+  const job = getJob(String(req.params.jobId));
+  if (!job) {
+    res.status(404).json({ error: "That search is no longer being tracked. Run it again." });
+    return;
+  }
+  res.json({ job });
 });
 
 app.post("/api/discover", async (req, res, next) => {
@@ -220,9 +242,17 @@ app.post("/api/discover", async (req, res, next) => {
       }
     }
 
-    const result = await discoverWines(options);
-    discoverCache.set(key, result);
-    res.json({ ...result, cached: false });
+    const running = findRunning(`discover:${key}`);
+    if (running) {
+      res.status(202).json({ job: running });
+      return;
+    }
+    const job = startJob(`discover:${key}`, async () => {
+      const result = await discoverWines(options);
+      discoverCache.set(key, result);
+      return result;
+    });
+    res.status(202).json({ job });
   } catch (err) {
     next(err);
   }
@@ -377,6 +407,16 @@ app.post("/api/alerts/ack", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+/** Poll a running discovery sweep. */
+app.get("/api/discover/:jobId", (req, res) => {
+  const job = getJob(String(req.params.jobId));
+  if (!job) {
+    res.status(404).json({ error: "That sweep is no longer being tracked. Run it again." });
+    return;
+  }
+  res.json({ job });
 });
 
 app.use(express.static(publicDir, { extensions: ["html"] }));
